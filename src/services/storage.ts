@@ -1,42 +1,48 @@
-import type { WindowScene } from '@/types'
+/**
+ * 通用 KV 层。
+ *
+ * 所有数据共用 localStorage，并发正确性依赖浏览器的两个保证：
+ * 1. 同步 JS 执行块不会被另一个标签页中断；
+ * 2. 一次 `setItem` 对其它标签页是原子可见的。
+ * 因此「读 → 改 → 写」放在同一个同步函数里，就是一次 CAS；
+ * 标签页之间通过 `storage` 事件看到对方提交后的余量。
+ */
 
-const STORAGE_KEY = 'bus_window_scenes'
+export interface KV {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
+}
 
-export function getAllScenes(): WindowScene[] {
+const memoryStore = new Map<string, string>()
+
+/** 非浏览器环境（单测）下的内存实现 */
+export const memoryKV: KV = {
+  getItem: (key) => (memoryStore.has(key) ? memoryStore.get(key)! : null),
+  setItem: (key, value) => void memoryStore.set(key, value),
+  removeItem: (key) => void memoryStore.delete(key),
+}
+
+export const defaultKV: KV =
+  typeof localStorage !== 'undefined'
+    ? localStorage
+    : memoryKV
+
+export function readJSON<T>(kv: KV, key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    return JSON.parse(raw) as WindowScene[]
+    const raw = kv.getItem(key)
+    if (!raw) return fallback
+    return JSON.parse(raw) as T
   } catch {
-    return []
+    return fallback
   }
 }
 
-export function saveScene(scene: WindowScene): void {
-  const scenes = getAllScenes()
-  scenes.push(scene)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
+export function writeJSON(kv: KV, key: string, value: unknown): void {
+  kv.setItem(key, JSON.stringify(value))
 }
 
-export function deleteScene(id: string): void {
-  const scenes = getAllScenes().filter((s) => s.id !== id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
-}
-
-export function getScenesByRoute(routeName: string): WindowScene[] {
-  return getAllScenes()
-    .filter((s) => s.routeName === routeName)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-}
-
-export function getAllRouteNames(): string[] {
-  const scenes = getAllScenes()
-  const routeSet = new Set(scenes.map((s) => s.routeName))
-  return Array.from(routeSet).sort()
-}
-
-export function getRandomScene(): WindowScene | null {
-  const scenes = getAllScenes()
-  if (scenes.length === 0) return null
-  return scenes[Math.floor(Math.random() * scenes.length)]
-}
+/** 旧素材单的存储键 */
+export const LEGACY_MATERIALS_KEY = 'bus_window_materials'
+/** 旧窗景列表的存储键（迁移后备份保留） */
+export const LEGACY_SCENES_KEY = 'bus_window_scenes'

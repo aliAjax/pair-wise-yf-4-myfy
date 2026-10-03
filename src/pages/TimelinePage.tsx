@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, Route, X, Trash2, Clock, MapPin } from 'lucide-react'
+import { Search, Route, X, Trash2, Clock, MapPin, ClipboardList, GitBranch } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
 import {
   formatTimestamp,
@@ -8,17 +8,29 @@ import {
   getTreeIcon,
   getPedestrianIcon,
 } from '@/utils/sceneHelpers'
-import type { WindowScene } from '@/types'
+import type { SceneView, SceneFormData } from '@/types'
 
 export default function TimelinePage() {
   const { routeNames, selectedRoute, currentRouteScenes, selectRoute, loadAll, deleteScene } =
     useSceneStore()
   const [search, setSearch] = useState('')
-  const [detailScene, setDetailScene] = useState<WindowScene | null>(null)
+  const [detailScene, setDetailScene] = useState<SceneView | null>(null)
+  const [revising, setRevising] = useState(false)
 
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  // 修订后详情要跟着新版本视图更新：内容变化时才 setState，避免渲染环
+  const scenesVersion = useSceneStore(
+    (s) => s.scenes.find((x) => x.id === detailScene?.id)?.versionId,
+  )
+  useEffect(() => {
+    if (!detailScene || !scenesVersion) return
+    if (detailScene.versionId === scenesVersion) return
+    const fresh = useSceneStore.getState().scenes.find((s) => s.id === detailScene.id)
+    if (fresh) setDetailScene(fresh)
+  }, [detailScene, scenesVersion])
 
   const filteredRoutes = routeNames.filter((r) =>
     r.toLowerCase().includes(search.toLowerCase())
@@ -102,7 +114,7 @@ export default function TimelinePage() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setDetailScene(scene)}
+                    onClick={() => { setDetailScene(scene); setRevising(false) }}
                     className="group flex-1 rounded-xl border border-teal-800 bg-teal-900/50 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-dusk-400/40 hover:shadow-lg hover:shadow-dusk-400/10"
                   >
                     <div className="flex items-center gap-2 mb-2">
@@ -110,6 +122,12 @@ export default function TimelinePage() {
                       <span className="text-sm font-semibold text-mist-100">
                         {scene.segment}
                       </span>
+                      {scene.versionCount > 1 && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">
+                          <GitBranch className="w-3 h-3" />
+                          v{scene.version}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 mb-1.5 text-mist-400">
                       <MapPin className="w-3 h-3" />
@@ -145,7 +163,7 @@ export default function TimelinePage() {
           onClick={() => setDetailScene(null)}
         >
           <div
-            className="relative mx-4 w-full max-w-md animate-scale-in rounded-2xl border border-teal-700 bg-teal-900 p-6 shadow-2xl"
+            className="relative mx-4 max-h-[90vh] w-full max-w-md overflow-y-auto animate-scale-in rounded-2xl border border-teal-700 bg-teal-900 p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -155,52 +173,170 @@ export default function TimelinePage() {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="mb-4 flex items-center gap-3">
-              {getWeatherIcon(detailScene.weather)}
-              <h2 className="text-xl font-bold text-dusk-400">{detailScene.segment}</h2>
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center gap-2 text-mist-300">
-                <MapPin className="w-4 h-4 text-dusk-400" />
-                <span>{detailScene.routeName}</span>
-                <span className="text-teal-600">·</span>
-                <span>{detailScene.seatDirection}侧</span>
-              </div>
-              <div className="flex items-center gap-2 text-mist-300">
-                <Clock className="w-4 h-4 text-dusk-400" />
-                <span>{formatTimestamp(detailScene.timestamp)}</span>
-                <span className="text-teal-600">·</span>
-                <span>{getTimeOfDay(detailScene.timestamp)}</span>
-              </div>
-              <div className="flex items-center gap-3 text-mist-300">
-                {getTreeIcon(detailScene.treeDensity)}
-                <span>{detailScene.treeDensity}</span>
-                {getPedestrianIcon(detailScene.pedestrianStatus)}
-                <span>{detailScene.pedestrianStatus}</span>
-              </div>
-              {detailScene.signText && (
-                <div className="rounded-lg bg-teal-800/50 px-3 py-2 text-mist-200">
-                  招牌: {detailScene.signText}
+            {!revising ? (
+              <>
+                <div className="mb-4 flex items-center gap-3 pr-8">
+                  {getWeatherIcon(detailScene.weather)}
+                  <h2 className="text-xl font-bold text-dusk-400">{detailScene.segment}</h2>
+                  {detailScene.versionCount > 1 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
+                      <GitBranch className="w-3.5 h-3.5" />
+                      已修订 {detailScene.versionCount} 版 · 当前 v{detailScene.version}
+                    </span>
+                  )}
                 </div>
-              )}
-              {detailScene.note && (
-                <div className="rounded-lg border border-teal-800 px-3 py-2 text-mist-300">
-                  {detailScene.note}
-                </div>
-              )}
-            </div>
 
-            <button
-              onClick={() => handleDelete(detailScene.id)}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-red-900/40 py-2.5 text-sm text-red-300 transition-colors hover:bg-red-900/60"
-            >
-              <Trash2 className="w-4 h-4" />
-              删除此窗景
-            </button>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center gap-2 text-mist-300">
+                    <MapPin className="w-4 h-4 text-dusk-400" />
+                    <span>{detailScene.routeName}</span>
+                    <span className="text-teal-600">·</span>
+                    <span>{detailScene.seatDirection}侧</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-mist-300">
+                    <Clock className="w-4 h-4 text-dusk-400" />
+                    <span>{formatTimestamp(detailScene.timestamp)}</span>
+                    <span className="text-teal-600">·</span>
+                    <span>{getTimeOfDay(detailScene.timestamp)}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-mist-300">
+                    {getTreeIcon(detailScene.treeDensity)}
+                    <span>{detailScene.treeDensity}</span>
+                    {getPedestrianIcon(detailScene.pedestrianStatus)}
+                    <span>{detailScene.pedestrianStatus}</span>
+                  </div>
+                  {detailScene.signText && (
+                    <div className="rounded-lg bg-teal-800/50 px-3 py-2 text-mist-200">
+                      招牌: {detailScene.signText}
+                    </div>
+                  )}
+                  {detailScene.note && (
+                    <div className="rounded-lg border border-teal-800 px-3 py-2 text-mist-300">
+                      {detailScene.note}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 flex flex-col gap-2">
+                  <button
+                    onClick={() => setRevising(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-500/15 py-2.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/25"
+                  >
+                    <GitBranch className="w-4 h-4" />
+                    修订此窗景（生成新版本）
+                  </button>
+                  <button
+                    onClick={() => {
+                      useSceneStore.getState().saveMaterial(detailScene.id, detailScene.versionId)
+                      setDetailScene(null)
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-dusk-400/15 py-2.5 text-sm text-dusk-300 transition-colors hover:bg-dusk-400/25"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    收进素材单（引用此版本）
+                  </button>
+                  <button
+                    onClick={() => handleDelete(detailScene.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-900/40 py-2.5 text-sm text-red-300 transition-colors hover:bg-red-900/60"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    移除窗景（素材保留并标失效）
+                  </button>
+                </div>
+              </>
+            ) : (
+              <ReviseForm
+                scene={detailScene}
+                onDone={() => {
+                  const fresh = useSceneStore.getState().scenes.find(
+                    (s) => s.id === detailScene.id,
+                  )
+                  if (fresh) setDetailScene(fresh)
+                  setRevising(false)
+                }}
+                onCancel={() => setRevising(false)}
+              />
+            )}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ReviseForm({
+  scene,
+  onDone,
+  onCancel,
+}: {
+  scene: SceneView
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const reviseScene = useSceneStore((s) => s.reviseScene)
+  const [form, setForm] = useState<SceneFormData>({
+    routeName: scene.routeName,
+    segment: scene.segment,
+    seatDirection: scene.seatDirection,
+    weather: scene.weather,
+    signText: scene.signText,
+    treeDensity: scene.treeDensity,
+    pedestrianStatus: scene.pedestrianStatus,
+    note: scene.note,
+  })
+
+  const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
+    setForm((prev) => ({ ...prev, [key]: val }))
+
+  return (
+    <div>
+      <h2 className="mb-1 font-serif text-lg text-dusk-400">修订窗景</h2>
+      <p className="mb-4 text-xs text-mist-500">
+        保存后生成 v{scene.version + 1}，旧版本保留；引用旧版的素材将被标为待确认。
+      </p>
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs text-mist-400">区间</label>
+          <input
+            className="w-full rounded-lg border border-teal-700 bg-teal-850 px-3 py-2 text-sm text-mist-100 outline-none focus:border-dusk-400"
+            value={form.segment}
+            onChange={(e) => update('segment', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-mist-400">招牌文字</label>
+          <input
+            className="w-full rounded-lg border border-teal-700 bg-teal-850 px-3 py-2 text-sm text-mist-100 outline-none focus:border-dusk-400"
+            value={form.signText}
+            onChange={(e) => update('signText', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-mist-400">观察笔记（正文）</label>
+          <textarea
+            className="h-24 w-full resize-none rounded-lg border border-teal-700 bg-teal-850 px-3 py-2 text-sm text-mist-100 outline-none focus:border-dusk-400"
+            value={form.note}
+            onChange={(e) => update('note', e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={() => {
+            reviseScene(scene.id, form)
+            onDone()
+          }}
+          className="flex-1 rounded-lg bg-dusk-400 py-2.5 text-sm font-medium text-teal-950"
+        >
+          生成新版本
+        </button>
+        <button
+          onClick={onCancel}
+          className="rounded-lg border border-teal-700 px-4 py-2.5 text-sm text-mist-300 hover:bg-teal-800"
+        >
+          取消
+        </button>
+      </div>
     </div>
   )
 }

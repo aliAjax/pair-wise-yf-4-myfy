@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check": "tsc -b --noEmit"
+    "check": "tsc -b --noEmit",
+    "test:core": "esbuild tests/core.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/core.test.mjs && node node_modules/.tmp/core.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
