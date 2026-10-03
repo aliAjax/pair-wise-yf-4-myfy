@@ -18,6 +18,24 @@ export function saveScene(scene: WindowScene): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
 }
 
+export function saveAllScenes(scenes: WindowScene[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
+}
+
+/** 窗景版本迁移：给旧数据补上 version 字段（视为 v1） */
+export function migrateSceneVersions(): void {
+  const scenes = getAllScenes()
+  let changed = false
+  const next = scenes.map((s) => {
+    if (typeof s.version !== 'number') {
+      changed = true
+      return { ...s, version: 1 }
+    }
+    return s
+  })
+  if (changed) saveAllScenes(next)
+}
+
 export function deleteScene(id: string): void {
   const scenes = getAllScenes().filter((s) => s.id !== id)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
